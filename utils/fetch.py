@@ -1,5 +1,4 @@
 import time
-import os
 import json
 import re
 import requests
@@ -7,7 +6,7 @@ from tqdm import tqdm
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
-TOTAL_PER_PAGE = "100"
+TOTAL_PER_PAGE = 100
 
 RE_LINK = re.compile(r'href="([^"]+)"')
 RE_POSITION = re.compile(r"(Senator|Candidate)", re.IGNORECASE)
@@ -30,7 +29,7 @@ class Individual(BaseModel):
         return match.group(1) if match else "N/A"
 
 
-def fetch_data(page: str = "1") -> Dict[str, Any]:
+def fetch_data(start: int = 0) -> Dict[str, Any]:
     cookies = {
         "csrftoken": "1eXgZmJ56JiAHME5gsU113SU7EJmxLZFX15ssGGqtI9NfecUsqlrdujx9KO5jDR7",
         "sessionid": "gAWVGAAAAAAAAAB9lIwQc2VhcmNoX2FncmVlbWVudJSIcy4:1sSWU7:Yr6Xrsj60XfdwBp-J_I7-Q6Eb24",
@@ -50,7 +49,7 @@ def fetch_data(page: str = "1") -> Dict[str, Any]:
     }
 
     data = {
-        "draw": page,
+        "draw": start // TOTAL_PER_PAGE + 1,
         "columns[0][data]": "0",
         "columns[0][name]": "",
         "columns[0][searchable]": "true",
@@ -85,7 +84,7 @@ def fetch_data(page: str = "1") -> Dict[str, Any]:
         "order[0][dir]": "asc",
         "order[1][column]": "0",
         "order[1][dir]": "asc",
-        "start": "0",
+        "start": start,
         "length": TOTAL_PER_PAGE,
         "search[value]": "",
         "search[regex]": "false",
@@ -116,8 +115,9 @@ def fetch_data(page: str = "1") -> Dict[str, Any]:
     return json_data
 
 
-def create_individuals(data: List[List[str]]) -> List[Individual]:
-    individuals_dict = {}
+def create_individuals(
+    individuals_dict: Dict[str, Individual], data: List[List[str]]
+) -> None:
     for entry in data:
         first_name, last_name, full_title, link_html, _ = entry
 
@@ -138,20 +138,20 @@ def create_individuals(data: List[List[str]]) -> List[Individual]:
                 position=position,
             )
 
-    return list(individuals_dict.values())
-
 
 initial_response = fetch_data()
 
 total_records = initial_response["recordsTotal"]
 total_pages = -(total_records // -int(TOTAL_PER_PAGE))  # Ceiling division
 
-all_individuals = []
+individuals_dict = {}
 
-for page in tqdm(range(1, total_pages + 1)):
-    response = fetch_data(page=str(page))
-    individuals = create_individuals(response["data"])
-    all_individuals.extend(individuals)
+for page in tqdm(range(total_pages)):
+    start = page * TOTAL_PER_PAGE
+    response = fetch_data(start=start)
+    create_individuals(individuals_dict, response["data"])
+
+all_individuals = list(individuals_dict.values())
 
 current_timestamp = int(time.time())
 with open(f"data/individuals_{current_timestamp}.json", "w") as file:
