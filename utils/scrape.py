@@ -58,13 +58,14 @@ def aggregate_data(individual: Individual) -> Politician:
     for link in individual.links:
         stock = fetch_data(link)
         if stock:
-            stocks.append(stock)
+            stocks.extend(stock)
     politician = Politician(
         firstName=individual.first_name,
         lastName=individual.last_name,
         position=individual.position,
         stocks=stocks,
     )
+    print(f"Politician: {politician.firstName} {politician.lastName} stock data has been aggregated")
     return politician
 
 
@@ -174,7 +175,7 @@ def get_date(soup: BeautifulSoup) -> str | None:
 individuals = parse_json_and_filter()
 politicians = []
 for individual in tqdm(individuals):
-    politicians.append(fetch_data(individual))
+    politicians.append(aggregate_data(individual))
 
 current_timestamp = int(time.time())
 with open(f"data/politicians_{current_timestamp}.json", "w") as f:
