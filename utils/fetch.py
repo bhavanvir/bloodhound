@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 import time
 import json
 import re
@@ -6,10 +8,15 @@ from tqdm import tqdm
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
+load_dotenv()
+
 TOTAL_PER_PAGE = 100
 
 RE_LINK = re.compile(r'href="([^"]+)"')
 RE_POSITION = re.compile(r"(Senator|Candidate)", re.IGNORECASE)
+
+CSRF_TOKEN = os.getenv("CSRF_TOKEN", "")
+SESSION_ID = os.getenv("SESSION_ID", "")
 
 
 class Individual(BaseModel):
@@ -31,8 +38,8 @@ class Individual(BaseModel):
 
 def fetch_data(start: int = 0) -> Dict[str, Any]:
     cookies = {
-        "csrftoken": "1eXgZmJ56JiAHME5gsU113SU7EJmxLZFX15ssGGqtI9NfecUsqlrdujx9KO5jDR7",
-        "sessionid": "gAWVGAAAAAAAAAB9lIwQc2VhcmNoX2FncmVlbWVudJSIcy4:1sSWU7:Yr6Xrsj60XfdwBp-J_I7-Q6Eb24",
+        "csrftoken": CSRF_TOKEN,
+        "sessionid": SESSION_ID,
     }
 
     headers = {
