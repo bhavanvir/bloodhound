@@ -112,8 +112,6 @@ def get_annual_stocks(soup: BeautifulSoup, date: str) -> List[Stock] | None:
                             date=date if date else None,
                         )
                         stocks.append(stock)
-        else:
-            return None
     return stocks
 
 
@@ -134,7 +132,7 @@ def get_ptr_stocks(soup, date) -> List[Stock] | None:
                 transaction_type = column_val[5]
                 value = column_val[7]
                 if "Stock" in asset_type:
-                    stock = stock = Stock(
+                    stock = Stock(
                         name=asset_name,
                         amount=value,
                         date=date if date else None,
