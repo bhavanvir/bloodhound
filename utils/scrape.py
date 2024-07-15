@@ -41,10 +41,21 @@ def filter_data(data: List[Individual], exclude: List[str]) -> List[Individual]:
 def aggregate_data(data: List[Individual]) -> List[Portfolio]:
     portfolios = []
     for entry in data:
-        portfolio = None
+        stocks = []
+        poltician_name = f"{entry.first_name} {entry.last_name}"
+        print(f"Aggregating data for: {poltician_name}")
         for link in entry.links:
-            portfolio = fetch_data(link)
-            portfolios.extend(portfolio)
+            stock = fetch_data(link)
+            if stock is None:
+                continue
+            stocks.extend(stock)
+
+        portfolio = Portfolio(
+            politician_name=poltician_name,
+            position=entry.position,
+            stocks=stocks,
+        )
+        portfolios.append(portfolio)
     return portfolios
 
 

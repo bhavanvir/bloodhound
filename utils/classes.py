@@ -18,5 +18,7 @@ class Individual(BaseModel):
     links: List[str] = []
 
 
-class Portfolio(Individual):
+class Portfolio(BaseModel):
+    politician_name: str
+    position: str
     stocks: List[Stock] = []
