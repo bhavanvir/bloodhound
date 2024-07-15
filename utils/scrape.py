@@ -1,38 +1,19 @@
 import os
 import json
+import re
+import time
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 from dotenv import load_dotenv
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
-from tqdm import tqdm
+from typing import List
 
 from helpers import COOKIES, HEADERS
+from classes import Individual, Portfolio, Stock
 
 load_dotenv()
 
 URL_PREFIX = "https://efdsearch.senate.gov"
-
-
-class Stock(BaseModel):
-    name: str
-    type: str
-    amount: str
-    date: str
-    transaction_date: Optional[str]
-    options: Optional[str]
-
-
-class Individual(BaseModel):
-    first_name: str
-    last_name: str
-    position: str
-    links: List[str] = []
-
-
-class Portfolio(Individual):
-    stocks: List[Stock] = []
 
 
 def fetch_latest_file(file_prefix: str) -> str:
@@ -57,26 +38,118 @@ def filter_data(data: List[Individual], exclude: List[str]) -> List[Individual]:
     return data
 
 
-def fetch_data(link: str) -> None:
-    def parse_ptr(soup: BeautifulSoup) -> None:
-        print(soup.prettify())
+def aggregate_data(data: List[Individual]) -> List[Portfolio]:
+    portfolios = []
+    for entry in data:
+        portfolio = None
+        for link in entry.links:
+            portfolio = fetch_data(link)
+            portfolios.extend(portfolio)
+    return portfolios
 
-    def parse_annual(soup: BeautifulSoup) -> None:
-        pass
+
+def fetch_data(link: str) -> List[Stock]:
+    def parse_ptr(soup: BeautifulSoup) -> List[Stock]:
+        assets_table = soup.find("table")
+        if assets_table is None:
+            print("Failed to fetch assets table for Period Report")
+            return
+        return get_ptr_assets(assets_table, get_date(soup))
+
+    def parse_annual(soup: BeautifulSoup) -> List[Stock]:
+        asset_title = soup.find(string="Part 3. Assets")
+        asset_parent = asset_title.find_parent("section")
+        assets_table = asset_parent.find("table")
+        if assets_table is None:
+            print("Failed to fetch assets table for Annual Report")
+            return
+        return get_annual_assets(assets_table, get_date(soup))
 
     response = requests.get(url=URL_PREFIX + link, cookies=COOKIES, headers=HEADERS)
     soup = BeautifulSoup(response.text, "html.parser")
+    if response.status_code != 200:
+        print(f"Failed to fetch data from: {URL_PREFIX + link}")
+        return
 
     print(f"Fetching data from: {URL_PREFIX + link}")
 
     if "ptr" in link:
-        parse_ptr(soup)
+        return parse_ptr(soup)
     elif "annual" in link:
-        parse_annual(soup)
+        return parse_annual(soup)
+
+
+def get_ptr_assets(assets_table: NavigableString, date: str | None) -> List[Stock]:
+    stocks = []
+    for row in assets_table.find_all("tr"):
+        columns = [column.get_text(strip=True) for column in row.find_all("td")]
+        if not columns:
+            continue
+        asset_name = columns[4]
+        asset_type = columns[5]
+        transaction_type, transaction_date = columns[6], columns[1]
+        amount = columns[7]
+        stock = None
+        if "Stock" in asset_type:
+            stock = Stock(
+                name=asset_name,
+                amount=amount,
+                date=date if date else None,
+                transaction_date=transaction_date,
+                type=transaction_type,
+                options=None,
+            )
+        if "Option" in asset_type:
+            option_index = asset_name.find("Option")
+            option_part = asset_name[option_index:]
+            remaining_part = asset_name[:option_index].strip()
+            stock.name = remaining_part
+            stock.options = option_part
+        stocks.append(stock) if stock else None
+    return stocks
+
+
+def get_annual_assets(assets_table: NavigableString, date: str) -> List[Stock]:
+    stocks = []
+    rows = assets_table.find_all("tr", class_="nowrap")
+    for row in rows:
+        columns = [column.get_text(strip=True) for column in row.find_all("td")]
+        if not columns:
+            continue
+        asset_name = columns[1]
+        asset_type = columns[2]
+        if "Mutual Funds" in asset_type or "Corporate Securities" in asset_type:
+            value = columns[4]
+            type = "sell" if "None" in value else "buy"
+            stock = Stock(
+                name=asset_name,
+                type=type,
+                amount=value,
+                date=date if date else None,
+                transaction_date=None,
+                options=None,
+            )
+            stocks.append(stock) if stock else None
+    return stocks
+
+
+def get_date(soup: BeautifulSoup) -> str | None:
+    pattern = re.compile(r"Filed.+[APM]{2}")
+    date_element = soup.find(string=pattern)
+    if date_element:
+        date_text = date_element.get_text()
+        match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", date_text)
+        return match.group() if match else None
+    else:
+        print("No date element element containing 'Filed' found")
 
 
 latest_file = fetch_latest_file(file_prefix="individuals")
 
 data = [Individual(**entry) for entry in json.load(open(latest_file))]
 data = filter_data(data, exclude=["paper"])
+portfolios = aggregate_data(data)
 
+current_timestamp = int(time.time())
+with open(f"data/portfolio_{current_timestamp}.json", "w") as f:
+    json.dump([portfolio.model_dump() for portfolio in portfolios], f, indent=2)
