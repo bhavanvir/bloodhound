@@ -79,3 +79,4 @@ latest_file = fetch_latest_file(file_prefix="individuals")
 
 data = [Individual(**entry) for entry in json.load(open(latest_file))]
 data = filter_data(data, exclude=["paper"])
+
