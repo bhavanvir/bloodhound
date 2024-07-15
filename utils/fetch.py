@@ -1,12 +1,14 @@
-import os
-from dotenv import load_dotenv
 import time
 import json
 import re
+
 import requests
+from dotenv import load_dotenv
 from tqdm import tqdm
 from typing import Dict, Any, List
 from pydantic import BaseModel
+
+from helpers import COOKIES, HEADERS
 
 load_dotenv()
 
@@ -14,9 +16,6 @@ TOTAL_PER_PAGE = 100
 
 RE_LINK = re.compile(r'href="([^"]+)"')
 RE_POSITION = re.compile(r"(Senator|Candidate)", re.IGNORECASE)
-
-CSRF_TOKEN = os.getenv("CSRF_TOKEN", "")
-SESSION_ID = os.getenv("SESSION_ID", "")
 
 
 class Individual(BaseModel):
@@ -37,24 +36,6 @@ class Individual(BaseModel):
 
 
 def fetch_data(start: int = 0) -> Dict[str, Any]:
-    cookies = {
-        "csrftoken": CSRF_TOKEN,
-        "sessionid": SESSION_ID,
-    }
-
-    headers = {
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "en-CA,en-US;q=0.7,en;q=0.3",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-CSRFToken": "1eXgZmJ56JiAHME5gsU113SU7EJmxLZFX15ssGGqtI9NfecUsqlrdujx9KO5jDR7",
-        "Origin": "https://efdsearch.senate.gov",
-        "Connection": "keep-alive",
-        "Referer": "https://efdsearch.senate.gov/search/",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-    }
-
     data = {
         "draw": start // TOTAL_PER_PAGE + 1,
         "columns[0][data]": "0",
@@ -108,8 +89,8 @@ def fetch_data(start: int = 0) -> Dict[str, Any]:
 
     response = requests.post(
         "https://efdsearch.senate.gov/search/report/data/",
-        cookies=cookies,
-        headers=headers,
+        cookies=COOKIES,
+        headers=HEADERS,
         data=data,
     )
     if response.status_code != 200:
