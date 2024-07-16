@@ -4,9 +4,9 @@ import re
 import time
 
 import requests
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Tag
 from dotenv import load_dotenv
-from typing import List
+from typing import List, Optional
 
 from helpers import COOKIES, HEADERS
 from classes import Individual, Portfolio, Stock
@@ -59,21 +59,21 @@ def aggregate_data(data: List[Individual]) -> List[Portfolio]:
     return portfolios
 
 
-def fetch_data(link: str) -> List[Stock]:
+def fetch_data(link: str) -> Optional[List[Stock]]:
     def parse_ptr(soup: BeautifulSoup) -> List[Stock]:
         assets_table = soup.find("table")
         if assets_table is None:
             print("Failed to fetch assets table for Period Report")
-            return
+            return []
         return get_ptr_assets(assets_table, get_date(soup))
 
     def parse_annual(soup: BeautifulSoup) -> List[Stock]:
         asset_title = soup.find(string="Part 3. Assets")
-        asset_parent = asset_title.find_parent("section")
-        assets_table = asset_parent.find("table")
+        asset_parent = asset_title.find_parent("section") if asset_title else None
+        assets_table = asset_parent.find("table") if asset_parent else None
         if assets_table is None:
             print("Failed to fetch assets table for Annual Report")
-            return
+            return []
         return get_annual_assets(assets_table, get_date(soup))
 
     response = requests.get(url=URL_PREFIX + link, cookies=COOKIES, headers=HEADERS)
@@ -90,9 +90,11 @@ def fetch_data(link: str) -> List[Stock]:
         return parse_annual(soup)
 
 
-def get_ptr_assets(assets_table: NavigableString, date: str | None) -> List[Stock]:
+def get_ptr_assets(
+    assets_table: Tag | NavigableString, date: str | None
+) -> List[Stock]:
     stocks = []
-    for row in assets_table.find_all("tr"):
+    for row in assets_table.find_all("tr"):  # type: ignore
         columns = [column.get_text(strip=True) for column in row.find_all("td")]
         if not columns:
             continue
@@ -110,19 +112,21 @@ def get_ptr_assets(assets_table: NavigableString, date: str | None) -> List[Stoc
                 type=transaction_type,
                 options=None,
             )
-        if "Option" in asset_type:
-            option_index = asset_name.find("Option")
-            option_part = asset_name[option_index:]
-            remaining_part = asset_name[:option_index].strip()
-            stock.name = remaining_part
-            stock.options = option_part
+            if "Option" in asset_type:
+                option_index = asset_name.find("Option")
+                option_part = asset_name[option_index:]
+                stock_name = asset_name[:option_index].strip()
+                stock.name = stock_name
+                stock.options = option_part
         stocks.append(stock) if stock else None
     return stocks
 
 
-def get_annual_assets(assets_table: NavigableString, date: str) -> List[Stock]:
+def get_annual_assets(
+    assets_table: Tag | NavigableString, date: str | None
+) -> List[Stock]:
     stocks = []
-    rows = assets_table.find_all("tr", class_="nowrap")
+    rows = assets_table.find_all("tr", class_="nowrap")  # type: ignore
     for row in rows:
         columns = [column.get_text(strip=True) for column in row.find_all("td")]
         if not columns:
