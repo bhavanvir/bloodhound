@@ -97,18 +97,23 @@ def parse_transactions(page: Page, individual: Individual) -> None:
         if comment == "--":
             comment = None
 
-        individual.stocks.append(
-            Stock(
-                transaction_date=transaction_date,
-                owner=owner,
-                ticker=ticker,
-                asset_name=asset_name,
-                asset_type=asset_type,
-                transaction_type=transaction_type,
-                amount=Stock.extract_amount(amount),
-                comment=comment,
+        # Case where there are multiple stocks
+        tickers = ticker.strip().split()
+        asset_names = asset_name.strip().split()
+
+        for ticker, asset_name in zip(tickers, asset_names):
+            individual.stocks.append(
+                Stock(
+                    transaction_date=transaction_date,
+                    owner=owner,
+                    ticker=ticker,
+                    asset_name=asset_name,
+                    asset_type=asset_type,
+                    transaction_type=transaction_type,
+                    amount=Stock.extract_amount(amount),
+                    comment=comment,
+                )
             )
-        )
 
 
 def parse_search_results(page: Page, context: BrowserContext) -> None:
