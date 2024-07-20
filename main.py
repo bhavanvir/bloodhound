@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple
 
 from pydantic import BaseModel
 from playwright.sync_api import (
-    Browser,
     sync_playwright,
     Playwright,
     Page,
@@ -69,6 +68,47 @@ def check_filer_types(page: Page, filer_types: List[str]) -> None:
 
 def parse_transactions(page: Page, individual: Individual) -> None:
     soup = BeautifulSoup(page.content(), "html.parser")
+    table = soup.find("table")
+
+    if not table:
+        print("\t[red]Table not found![/red]")
+        return
+
+    for row in table.find_all("tr"):  # type: ignore
+        columns = [column.text.strip() for column in row.find_all("td")]
+        if not columns:
+            continue
+
+        (
+            transaction_date,
+            owner,
+            ticker,
+            asset_name,
+            asset_type,
+            transaction_type,
+            amount,
+            comment,
+        ) = columns[1:]
+
+        if ticker == "--":
+            print("\t[yellow]Skipping row without ticker[/yellow]")
+            continue
+
+        if comment == "--":
+            comment = None
+
+        individual.stocks.append(
+            Stock(
+                transaction_date=transaction_date,
+                owner=owner,
+                ticker=ticker,
+                asset_name=asset_name,
+                asset_type=asset_type,
+                transaction_type=transaction_type,
+                amount=Stock.extract_amount(amount),
+                comment=comment,
+            )
+        )
 
 
 def parse_search_results(page: Page, context: BrowserContext) -> None:
@@ -79,6 +119,7 @@ def parse_search_results(page: Page, context: BrowserContext) -> None:
         print("[red]Table not found![/red]")
         return
 
+    individuals = {}
     for row in table.find_all("tr"):  # type: ignore
         columns = [column.text.strip() for column in row.find_all("td")]
         if not columns:
@@ -86,16 +127,23 @@ def parse_search_results(page: Page, context: BrowserContext) -> None:
 
         first_name, last_name, position, report_type = columns[:4]
 
-        individual = Individual(
-            first_name=first_name,
-            last_name=last_name,
-            position=Individual.extract_position(position),
-        )
+        name_key = (first_name, last_name)
+        if name_key not in individuals:
+            individuals[name_key] = Individual(
+                first_name=first_name,
+                last_name=last_name,
+                position=Individual.extract_position(position),
+            )
+            print(f"[green]Added {first_name} {last_name}[/green]")
+        else:
+            print(f"[yellow]Updating stocks for {first_name} {last_name}[/yellow]")
+
+        individual = individuals[name_key]
 
         link = page.locator(f'a:text-is("{report_type}")')
         url = link.get_attribute("href")
         if "paper" in url:  # type: ignore
-            print(f"[red]Skipping {individual.first_name} {individual.last_name}[/red]")
+            print("\t[yellow]Skipping due to paper type link[/yellow]")
             continue
 
         with context.expect_page() as new_page_info:
@@ -105,6 +153,7 @@ def parse_search_results(page: Page, context: BrowserContext) -> None:
         new_page.wait_for_load_state()
 
         parse_transactions(new_page, individual)
+
         break
 
 
