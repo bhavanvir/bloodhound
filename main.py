@@ -15,6 +15,7 @@ BASE_URL = "https://efdsearch.senate.gov/search/home/"
 BASE_TIMEOUT = 1000
 
 RE_POSITION = re.compile(r"(Senator|Candidate)", re.IGNORECASE)
+RE_AMOUNT = re.compile(r"[\$,]")
 
 
 class Stock(BaseModel):
@@ -29,9 +30,8 @@ class Stock(BaseModel):
 
     @staticmethod
     def extract_amount(html: str) -> Tuple[int, int]:
-        # match = re.search(r"\$(\d+),(\d+)", html)
-        # return int(match.group(1)), int(match.group(2)) if match else (0, 0)
-        pass
+        v1, v2 = map(int, RE_AMOUNT.sub("", html).split(" - "))
+        return (v1, v2)
 
 
 class Individual(BaseModel):
@@ -154,7 +154,9 @@ def parse_search_results(page: Page, context: BrowserContext) -> None:
 
         parse_transactions(new_page, individual)
 
-        break
+        new_page.close()
+
+    print(individuals)
 
 
 def run(p: Playwright) -> None:
