@@ -16,6 +16,7 @@ BASE_TIMEOUT = 1000
 
 RE_POSITION = re.compile(r"(Senator|Candidate)", re.IGNORECASE)
 RE_AMOUNT = re.compile(r"[\$,]")
+RE_COMPANIES = re.compile(r"\s*\n\s*\n\s*")
 
 
 class Stock(BaseModel):
@@ -99,7 +100,20 @@ def parse_transactions(page: Page, individual: Individual) -> None:
 
         # Case where there are multiple stocks
         tickers = ticker.strip().split()
-        asset_names = asset_name.strip().split()
+        asset_names = RE_COMPANIES.split(asset_name)
+        asset_names = [asset_name.replace("\n", " ") for asset_name in asset_names]
+
+        comments = {t: None for t in tickers}
+
+        if comment:
+            matched_tickers = [t for t in tickers if t in comment]
+
+            if matched_tickers:
+                for ticker in matched_tickers:
+                    comments[ticker] = comment
+            else:
+                for ticker in tickers:
+                    comments[ticker] = comment
 
         for ticker, asset_name in zip(tickers, asset_names):
             individual.stocks.append(
@@ -111,7 +125,7 @@ def parse_transactions(page: Page, individual: Individual) -> None:
                     asset_type=asset_type,
                     transaction_type=transaction_type,
                     amount=Stock.extract_amount(amount),
-                    comment=comment,
+                    comment=comments[ticker],
                 )
             )
 
