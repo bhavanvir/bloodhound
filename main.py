@@ -1,5 +1,7 @@
+import time
+import json
 import re
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 from pydantic import BaseModel
 from playwright.sync_api import (
@@ -17,6 +19,7 @@ BASE_TIMEOUT = 1000
 RE_POSITION = re.compile(r"(Senator|Candidate)", re.IGNORECASE)
 RE_AMOUNT = re.compile(r"[\$,]")
 RE_COMPANIES = re.compile(r"\s*\n\s*\n\s*")
+RE_ENTRIES = re.compile(r"\d+(?:,\d+)*")
 
 
 class Stock(BaseModel):
@@ -130,7 +133,9 @@ def parse_transactions(page: Page, individual: Individual) -> None:
             )
 
 
-def parse_search_results(page: Page, context: BrowserContext) -> None:
+def parse_search_results(
+    page: Page, context: BrowserContext, individuals: Dict[Tuple[str, str], Individual]
+) -> None:
     soup = BeautifulSoup(page.content(), "html.parser")
     table = soup.find("table")
 
@@ -138,7 +143,6 @@ def parse_search_results(page: Page, context: BrowserContext) -> None:
         print("[red]Table not found![/red]")
         return
 
-    individuals = {}
     for row in table.find_all("tr"):  # type: ignore
         columns = [column.text.strip() for column in row.find_all("td")]
         if not columns:
@@ -175,12 +179,14 @@ def parse_search_results(page: Page, context: BrowserContext) -> None:
 
         new_page.close()
 
-    print(individuals)
+    page.locator('a#filedReports_next[aria-controls="filedReports"]').click()
+
+    page.wait_for_timeout(BASE_TIMEOUT)
 
 
 def run(p: Playwright) -> None:
     chrome = p.chromium
-    browser = chrome.launch(headless=False)
+    browser = chrome.launch(headless=True)
     context = browser.new_context()
     page = context.new_page()
     page.goto(BASE_URL)
@@ -193,7 +199,28 @@ def run(p: Playwright) -> None:
 
     page.wait_for_timeout(BASE_TIMEOUT)
 
-    parse_search_results(page, context)
+    report_info = page.locator('div#filedReports_info[role="status"]').inner_text()
+    start, step, stop = map(
+        lambda x: int(x.replace(",", "")), RE_ENTRIES.findall(report_info)
+    )
+
+    individuals = {}
+    for _ in range(start, stop, step):
+        parse_search_results(page, context, individuals)
+
+    all_individuals = list(individuals.values())
+
+    print(
+        f"[green]Successfully scraped {len(all_individuals)} individuals! Saving output to the data directory...[/green]"
+    )
+
+    current_timestamp = int(time.time())
+    with open(f"data/individuals_{current_timestamp}.json", "w") as file:
+        file.write(
+            json.dumps(
+                [individual.model_dump() for individual in all_individuals], indent=2
+            )
+        )
 
     browser.close()
 
