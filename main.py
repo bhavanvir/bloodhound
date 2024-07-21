@@ -163,14 +163,14 @@ def parse_search_results(
 
         individual = individuals[name_key]
 
-        link = page.locator(f'a:text-is("{report_type}")')
-        url = link.get_attribute("href")
-        if "paper" in url:  # type: ignore
+        row_link = row.find("a")
+        row_url = row_link["href"]
+        if "paper" in row_url:  # type: ignore
             print("\t[yellow]Skipping due to paper type link[/yellow]")
             continue
 
         with context.expect_page() as new_page_info:
-            link.click()
+            page.locator(f'a[href="{row_url}"]').click()
 
         new_page = new_page_info.value
         new_page.wait_for_load_state()
